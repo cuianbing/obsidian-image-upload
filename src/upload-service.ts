@@ -97,7 +97,8 @@ function createPublicUrl(publicUrlPrefix: string, key: string): string {
  * @returns key 最后一个路径片段，即远程文件名。
  */
 function getObjectFilename(key: string): string {
-	return key.split('/').at(-1) ?? key;
+	const parts = key.split('/');
+	return parts[parts.length - 1] ?? key;
 }
 
 /** 将本地文件重命名为远程对象的唯一文件名，并返回更新后的文件对象。

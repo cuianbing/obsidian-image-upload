@@ -90,6 +90,82 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 		super(app, plugin);
 	}
 
+	/** 为 Obsidian 1.13+ 提供可搜索的声明式设置，同时保留 display() 兼容旧版本。 */
+	getSettingDefinitions() {
+		return [
+			{ name: 'Endpoint', desc: 'S3 服务地址，例如 https://s3.example.com', control: { type: 'text', key: 'endpoint' } },
+			{ name: 'Region', desc: 'S3 区域，例如 us-east-1', control: { type: 'text', key: 'region' } },
+			{ name: 'Bucket', desc: '用于存储图片的 Bucket', control: { type: 'text', key: 'bucket' } },
+			{ name: '公开 URL 前缀', desc: '例如 https://cdn.example.com/images', control: { type: 'text', key: 'publicUrlPrefix' } },
+			{ name: '对象路径前缀', desc: '例如 obsidian/images', control: { type: 'text', key: 'objectKeyPrefix' } },
+			{
+				name: 'Access key ID',
+				desc: '保存在 Obsidian 安全存储中，不会写入插件配置文件。',
+				render: (setting: Setting) => setting.addText((text) =>
+					text.setValue(this.plugin.credentials.accessKeyId).onChange(async (value) => {
+						this.plugin.updateCredential('accessKeyId', value);
+					}),
+				),
+			},
+			{
+				name: 'Secret access key',
+				desc: '保存在 Obsidian 安全存储中，不会写入插件配置文件。',
+				render: (setting: Setting) => setting.addText((text) => {
+					text.setValue(this.plugin.credentials.secretAccessKey).onChange(async (value) => {
+						this.plugin.updateCredential('secretAccessKey', value);
+					});
+					text.inputEl.type = 'password';
+				}),
+			},
+			{
+				name: 'Session token',
+				desc: '使用临时凭证时填写，可留空。',
+				render: (setting: Setting) => setting.addText((text) =>
+					text.setValue(this.plugin.credentials.sessionToken).onChange(async (value) => {
+						this.plugin.updateCredential('sessionToken', value);
+					}),
+				),
+			},
+			{ name: '最大文件大小（字节）', desc: '单个文件允许上传的最大大小', control: { type: 'number', key: 'maxFileSize', min: 1 } },
+			{ name: '请求超时（毫秒）', desc: '连接 S3 的最大等待时间', control: { type: 'number', key: 'requestTimeout', min: 1000 } },
+			{ name: '重试次数', desc: '网络失败时的重试次数，范围 0 到 5', control: { type: 'number', key: 'retryCount', min: 0, max: 5 } },
+			{ name: '粘贴图片时自动上传', desc: '关闭时保留 Obsidian 默认行为', control: { type: 'toggle', key: 'autoUploadOnPaste' } },
+			{ name: '上传成功后重命名本地文件', desc: '将本地文件名改为远程 UUID 文件名；关闭后保留原文件名', control: { type: 'toggle', key: 'renameLocalAfterUpload' } },
+			{ name: '上传成功后删除本地文件', desc: '默认关闭，仅在上传成功后删除本地图片', control: { type: 'toggle', key: 'deleteLocalAfterUpload' } },
+			{ name: '上传失败时回退到本地保存', desc: '推荐开启，确保上传失败时图片仍可使用', control: { type: 'toggle', key: 'fallbackToLocalOnFailure' } },
+			{ name: '显示上传通知', desc: '显示测试和上传结果通知', control: { type: 'toggle', key: 'showUploadNotice' } },
+			{ name: '使用 Path-style Endpoint', desc: '部分 S3-compatible 服务需要开启', control: { type: 'toggle', key: 'forcePathStyle' } },
+			{
+				name: '连接测试',
+				desc: '验证 endpoint、bucket 和凭证是否具备访问权限。',
+				render: (setting: Setting) => {
+					setting
+						.addButton((button) => button.setButtonText('测试连接').onClick(async () => this.plugin.testConnection()))
+						.addButton((button) => button.setButtonText('测试上传').onClick(async () => this.plugin.testUpload()));
+				},
+			},
+			{
+				name: '凭证状态',
+				desc: this.plugin.hasCredentials() ? 'Access Key 和 Secret Key 已配置。' : '尚未配置完整凭证。',
+				action: () => {
+					this.plugin.clearCredentials();
+					new Notice('S3 凭证已清除。');
+					this.refreshDefinitions();
+				},
+			},
+		];
+	}
+
+	/** 在新旧 Obsidian API 中刷新设置页。 */
+	private refreshDefinitions(): void {
+		const tab = this as PluginSettingTab & { update?: () => void };
+		if (typeof tab.update === 'function') {
+			tab.update();
+			return;
+		}
+		this.display();
+	}
+
 	/** 创建全部 S3 配置、凭证、策略开关和测试操作控件。
 	 * @returns 无返回值；控件直接挂载到设置页容器。
 	 */

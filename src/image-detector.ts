@@ -54,8 +54,18 @@ export function resolveImageFile(
 	sourcePath: string,
 ): TFile | null {
 	if (/^(?:https?:|data:|file:)/i.test(reference.target)) return null;
-	const file = app.metadataCache.getFirstLinkpathDest(reference.target, sourcePath);
+	const target = decodeImagePath(reference.target);
+	const file = app.metadataCache.getFirstLinkpathDest(target, sourcePath);
 	return file instanceof TFile ? file : null;
+}
+
+/** 解码 Markdown 图片路径中的 URL 编码字符，例如文件名中的空格。 */
+function decodeImagePath(path: string): string {
+	try {
+		return decodeURIComponent(path);
+	} catch {
+		return path;
+	}
 }
 
 /** 扫描 Wiki-link 图片语法并保留其别名作为 alt 文本。

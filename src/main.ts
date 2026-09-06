@@ -160,7 +160,7 @@ export default class ImageUploadPlugin extends Plugin {
 		const validationErrors = this.getValidationErrors();
 		if (validationErrors.length > 0) {
 			logS3Diagnostic('test-connection-validation-failed', { errors: validationErrors });
-			new Notice(validationErrors.at(0) ?? 'S3 配置无效。');
+			new Notice(validationErrors[0] ?? 'S3 配置无效。');
 			return;
 		}
 		if (!this.credentialStorage.hasCredentials()) {
@@ -191,7 +191,7 @@ export default class ImageUploadPlugin extends Plugin {
 	async testUpload(): Promise<void> {
 		const validationErrors = this.getValidationErrors();
 		if (validationErrors.length > 0) {
-			new Notice(validationErrors.at(0) ?? 'S3 配置无效。');
+			new Notice(validationErrors[0] ?? 'S3 配置无效。');
 			return;
 		}
 		if (!this.credentialStorage.hasCredentials()) {

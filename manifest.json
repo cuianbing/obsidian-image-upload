@@ -1,7 +1,7 @@
 {
 	"id": "anbing-image-upload",
 	"name": "anbing-image-upload",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"minAppVersion": "1.11.4",
 	"description": "Upload images to S3-compatible storage.",
 	"author": "cuianbing",

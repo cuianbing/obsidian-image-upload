@@ -9,6 +9,7 @@ export interface ImageUploadSettings {
 	requestTimeout: number;
 	retryCount: number;
 	autoUploadOnPaste: boolean;
+	renameLocalAfterUpload: boolean;
 	deleteLocalAfterUpload: boolean;
 	fallbackToLocalOnFailure: boolean;
 	showUploadNotice: boolean;
@@ -21,10 +22,19 @@ export interface S3Credentials {
 	sessionToken: string;
 }
 
-export type S3Operation = 'connection' | 'test-upload';
+export type S3Operation = 'connection' | 'test-upload' | 'upload';
 
 export interface S3OperationResult {
 	operation: S3Operation;
+	requestId?: string;
+}
+
+export interface ImageUploadResult {
+	key: string;
+	url: string;
+	localPath: string;
+	contentType: string;
+	bytes: number;
 	requestId?: string;
 }
 

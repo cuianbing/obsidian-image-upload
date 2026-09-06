@@ -25,12 +25,17 @@ export const DEFAULT_SETTINGS: ImageUploadSettings = {
 	requestTimeout: 30_000,
 	retryCount: 2,
 	autoUploadOnPaste: false,
+	renameLocalAfterUpload: true,
 	deleteLocalAfterUpload: false,
 	fallbackToLocalOnFailure: true,
 	showUploadNotice: true,
 	forcePathStyle: false,
 };
 
+/** 将持久化数据合并到默认配置，并统一设置 schema 版本。
+ * @param data loadData() 返回的未知持久化内容。
+ * @returns 补全默认值并完成迁移后的配置。
+ */
 export function loadImageUploadSettings(data: unknown): ImageUploadSettings {
 	const saved = isRecord(data) ? data : {};
 	const legacyValue = typeof saved.mySetting === 'string' ? saved.mySetting : undefined;
@@ -45,6 +50,10 @@ export function loadImageUploadSettings(data: unknown): ImageUploadSettings {
 	};
 }
 
+/** 校验 Endpoint、Bucket、超时和重试等字段，返回面向用户的错误文案。
+ * @param settings 待校验的插件配置。
+ * @returns 面向用户的校验错误列表；空数组表示校验通过。
+ */
 export function validateSettings(settings: ImageUploadSettings): string[] {
 	const errors: string[] = [];
 	if (!settings.endpoint.trim()) errors.push('请填写 S3 Endpoint。');
@@ -64,15 +73,26 @@ export function validateSettings(settings: ImageUploadSettings): string[] {
 	return errors;
 }
 
+/** 判断持久化配置是否为可展开的对象。
+ * @param value 待判断的未知值。
+ * @returns 值是否为非 null 对象。
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
 }
 
 export class ImageUploadSettingTab extends PluginSettingTab {
+	/** 保存设置页所需的插件能力接口。
+	 * @param app 当前 Obsidian App 实例。
+	 * @param plugin 提供配置、凭证和测试操作的插件实例。
+	 */
 	constructor(app: App, private readonly plugin: ObsidianPlugin & SettingsPlugin) {
 		super(app, plugin);
 	}
 
+	/** 创建全部 S3 配置、凭证、策略开关和测试操作控件。
+	 * @returns 无返回值；控件直接挂载到设置页容器。
+	 */
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
@@ -122,6 +142,7 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 		this.addNumberSetting(containerEl, '重试次数', '网络失败时的重试次数，范围 0 到 5', 'retryCount');
 
 		this.addToggleSetting(containerEl, '粘贴图片时自动上传', '关闭时保留 Obsidian 默认行为', 'autoUploadOnPaste');
+		this.addToggleSetting(containerEl, '上传成功后重命名本地文件', '将本地文件名改为远程 UUID 文件名；关闭后保留原文件名', 'renameLocalAfterUpload');
 		this.addToggleSetting(containerEl, '上传成功后删除本地文件', '默认关闭，仅在上传成功后删除本地图片', 'deleteLocalAfterUpload');
 		this.addToggleSetting(containerEl, '上传失败时回退到本地保存', '推荐开启，确保上传失败时图片仍可使用', 'fallbackToLocalOnFailure');
 		this.addToggleSetting(containerEl, '显示上传通知', '显示测试和上传结果通知', 'showUploadNotice');
@@ -152,6 +173,13 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 			);
 	}
 
+	/** 创建一个字符串配置项，并在变更后保存配置。
+	 * @param containerEl 设置项要挂载到的 DOM 容器。
+	 * @param name 设置项显示名称。
+	 * @param desc 设置项说明文字。
+	 * @param key 要编辑的字符串配置字段。
+	 * @returns 无返回值。
+	 */
 	private addTextSetting(
 		containerEl: HTMLElement,
 		name: string,
@@ -166,6 +194,13 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 		);
 	}
 
+	/** 创建一个数字配置项；非法数字不会写入配置。
+	 * @param containerEl 设置项要挂载到的 DOM 容器。
+	 * @param name 设置项显示名称。
+	 * @param desc 设置项说明文字。
+	 * @param key 要编辑的数字配置字段。
+	 * @returns 无返回值。
+	 */
 	private addNumberSetting(
 		containerEl: HTMLElement,
 		name: string,
@@ -183,11 +218,18 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 		);
 	}
 
+	/** 创建一个布尔策略开关，并在变更后保存配置。
+	 * @param containerEl 设置项要挂载到的 DOM 容器。
+	 * @param name 开关显示名称。
+	 * @param desc 开关说明文字。
+	 * @param key 要编辑的布尔策略字段。
+	 * @returns 无返回值。
+	 */
 	private addToggleSetting(
 		containerEl: HTMLElement,
 		name: string,
 		desc: string,
-		key: 'autoUploadOnPaste' | 'deleteLocalAfterUpload' | 'fallbackToLocalOnFailure' | 'showUploadNotice' | 'forcePathStyle',
+		key: 'autoUploadOnPaste' | 'renameLocalAfterUpload' | 'deleteLocalAfterUpload' | 'fallbackToLocalOnFailure' | 'showUploadNotice' | 'forcePathStyle',
 	): void {
 		new Setting(containerEl).setName(name).setDesc(desc).addToggle((toggle) =>
 			toggle.setValue(this.plugin.settings[key]).onChange(async (value) => {

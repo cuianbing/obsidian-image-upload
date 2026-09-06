@@ -2,6 +2,7 @@ import {
 	App,
 	Editor,
 	FuzzySuggestModal,
+	MarkdownFileInfo,
 	MarkdownView,
 	Notice,
 	Plugin,
@@ -61,6 +62,14 @@ export default class ImageUploadPlugin extends Plugin {
 				void this.uploadCurrentImage(editor);
 			},
 		});
+		this.registerEvent(
+			this.app.workspace.on('editor-paste', (event, editor, info) => {
+				if (event.defaultPrevented || !this.settings.autoUploadOnPaste) return;
+				if (!getPastedImage(event)) return;
+				event.preventDefault();
+				void this.handleImagePaste(event, editor, info);
+			}),
+		);
 		this.addCommand({
 			id: 'upload-image-file-to-s3',
 			name: 'Upload image file to S3',
@@ -286,6 +295,68 @@ export default class ImageUploadPlugin extends Plugin {
 		}
 		window.setTimeout(() => progressNotice.hide(), 4000);
 	}
+
+	/** 处理开启自动上传时的图片粘贴事件，失败时按配置回退到本地文件。
+	 * @param event Obsidian 编辑器派发的粘贴事件。
+	 * @param editor 接收粘贴内容的 Markdown 编辑器。
+	 * @param info 当前 Markdown 文件信息，用于确定本地文件目录。
+	 * @returns 粘贴处理完成后的 Promise。
+	 */
+	private async handleImagePaste(
+		event: ClipboardEvent,
+		editor: Editor,
+		info: MarkdownView | MarkdownFileInfo,
+	): Promise<void> {
+		const imageFile = getPastedImage(event);
+		if (!imageFile) return;
+
+		const localFile = await this.savePastedImage(imageFile, info);
+		if (!localFile) return;
+		try {
+			new Notice('正在上传粘贴的图片...', 0);
+			const result = await this.uploadFile(localFile);
+			editor.replaceSelection(`![${localFile.basename}](${result.url})`);
+			const renamedFile = this.settings.renameLocalAfterUpload
+				? await this.uploadService.renameFileToRemoteName(localFile, result.key)
+				: localFile;
+			if (this.settings.deleteLocalAfterUpload) await this.app.fileManager.trashFile(renamedFile);
+			new Notice('粘贴图片已上传并插入 S3 链接。');
+		} catch (error) {
+			const normalizedError = this.getNormalizedError(error);
+			logS3Error('upload-pasted-image', this.settings, normalizedError);
+			if (this.settings.fallbackToLocalOnFailure) {
+				editor.replaceSelection(`![${localFile.basename}](${localFile.path})`);
+				new Notice(`上传失败，已保留本地图片：${formatErrorForNotice(normalizedError)}`);
+			} else {
+				await this.app.fileManager.trashFile(localFile);
+				new Notice(formatErrorForNotice(normalizedError));
+			}
+		}
+	}
+
+	/** 将粘贴的图片保存到当前文档所在目录，并返回 Vault 文件对象。
+	 * @param image 粘贴板中的图片文件。
+	 * @param info 当前 Markdown 文件信息。
+	 * @returns 新建的 Vault 图片文件；创建失败时返回 null。
+	 */
+	private async savePastedImage(
+		image: File,
+		info: MarkdownView | MarkdownFileInfo,
+	): Promise<TFile | null> {
+		try {
+			const sourcePath = info.file?.path ?? '';
+			const extension = image.type.split('/')[1] || 'png';
+			const filename = `pasted-${Date.now()}.${extension}`;
+			const parent = this.app.fileManager.getNewFileParent(sourcePath, filename);
+			const path = parent.path ? `${parent.path}/${filename}` : filename;
+			const buffer = await image.arrayBuffer();
+			return await this.app.vault.createBinary(path, buffer);
+		} catch (error) {
+			const normalizedError = this.getNormalizedError(error);
+			new Notice(`无法保存粘贴图片：${formatErrorForNotice(normalizedError)}`);
+			return null;
+		}
+	}
 	/** 更新单项敏感凭证，并立即写入 Obsidian SecretStorage。
 	 * @param key 要更新的凭证字段名。
 	 * @param value 用户输入的新凭证值。
@@ -365,6 +436,12 @@ class ImageFileSuggestModal extends FuzzySuggestModal<TFile> {
 function isImageFile(file: TFile): boolean {
 	return ['avif', 'bmp', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']
 		.includes(file.extension.toLowerCase());
+}
+
+/** 从粘贴事件中提取第一个图片文件，非图片粘贴返回 null。 */
+function getPastedImage(event: ClipboardEvent): File | null {
+	const files = Array.from(event.clipboardData?.files ?? []);
+	return files.find((file) => file.type.startsWith('image/')) ?? null;
 }
 
 /** 兼容打包环境中 instanceof 失效的情况，识别带 normalized 字段的异常。

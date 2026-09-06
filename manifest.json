@@ -1,11 +1,11 @@
 {
 	"id": "obsidian-image-upload",
 	"name": "obsidian-image-upload",
-	"version": "1.1.0",
+	"version": "1.0.0",
 	"minAppVersion": "1.11.4",
 	"description": "Upload images to S3-compatible storage",
 	"author": "cuianbing",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"authorUrl": "https://cuianbing.cn",
+	"fundingUrl": "https://cuianbing.cn/sponsor",
 	"isDesktopOnly": true
 }

@@ -1,4 +1,32 @@
-# Obsidian Sample Plugin
+# Obsidian Image Upload
+
+当前版本已完成阶段一：S3 配置与上传策略。插件使用 AWS SDK v3 连接 AWS S3 或兼容 S3 API 的对象存储，后续阶段会在此基础上加入图片上传和 Markdown 链接替换。
+
+## 阶段一功能
+
+- 配置 S3 Endpoint、Region、Bucket、公开 URL 前缀和对象路径前缀。
+- 使用 Obsidian SecretStorage 保存 access key、secret access key 和可选 session token。
+- 在设置页测试 Bucket 访问权限和临时对象上传/清理。
+- 配置粘贴自动上传、上传成功后删除本地文件、失败回退和通知策略。
+- 使用 AWS SDK v3 完成签名、重试和 S3 命令，并通过 Obsidian `requestUrl()` 发送请求，避免插件 Fetch 环境的 CORS 限制。
+
+## 使用前提
+
+- 当前版本面向桌面端，移动端暂不支持。
+- 远程 URL 默认按公开访问设计；Bucket 或 CDN 的公开读权限需要用户自行配置，插件不会修改 Bucket 权限或 CORS。
+- 测试上传会写入对象路径下的 `.plugin-test/` 临时对象，并在成功后尝试删除。
+- 上传失败时默认保留本地图片；上传成功后默认不删除本地文件。
+- Secret key 保存在 Obsidian SecretStorage 中，但拥有本地配置访问权限的用户仍可能访问该凭证。后续可以增加预签名 URL 或临时凭证方案。
+
+## 配置
+
+在 **设置 → 社区插件 → Obsidian Image Upload** 中填写 S3 配置，然后使用“测试连接”和“测试上传”确认权限。建议使用专用 Bucket 或前缀，并只授予必要的对象读写权限。
+
+后续版本计划支持私有 Bucket、批量迁移、图片压缩和移动端。
+
+---
+
+以下是官方脚手架说明。
 
 This is a sample plugin for Obsidian (https://obsidian.md).
 

@@ -4,6 +4,7 @@ import {
 	FuzzySuggestModal,
 	MarkdownFileInfo,
 	MarkdownView,
+	Menu,
 	Notice,
 	Plugin,
 	TFile,
@@ -84,6 +85,49 @@ export default class ImageUploadPlugin extends Plugin {
 				void this.uploadDocumentImages(editor);
 			},
 		});
+		this.registerEvent(
+			this.app.workspace.on('editor-menu', (menu, editor) => {
+				menu.addItem((item) => {
+					item
+						.setTitle('图片上传')
+						.setIcon('image')
+						.onClick((event) => {
+							this.showImageUploadSubmenu(event, editor);
+						});
+				});
+			}),
+		);
+	}
+
+	/** 在编辑器右键菜单中显示“图片上传”的二级功能菜单。
+	 * @param event 点击一级菜单时的鼠标或键盘事件。
+	 * @param editor 当前 Markdown 编辑器。
+	 * @param info 当前 Markdown 文件信息。
+	 * @returns 无返回值；二级菜单通过 Obsidian Menu 显示。
+	 */
+	private showImageUploadSubmenu(
+		event: MouseEvent | KeyboardEvent,
+		editor: Editor,
+	): void {
+		const submenu = new Menu();
+		submenu.addItem((item) => {
+			item.setTitle('上传当前图片到 S3').setIcon('upload').onClick(() => {
+				void this.uploadCurrentImage(editor);
+			});
+		});
+		submenu.addItem((item) => {
+			item.setTitle('选择图片上传到 S3').setIcon('file-image').onClick(() => {
+				new ImageFileSuggestModal(this.app, this, editor).open();
+			});
+		});
+		submenu.addItem((item) => {
+			item.setTitle('上传当前文档的所有图片').setIcon('images').onClick(() => {
+				void this.uploadDocumentImages(editor);
+			});
+		});
+
+		const position = getSubmenuPosition(event);
+		submenu.showAtPosition(position);
 	}
 
 	/** 读取并迁移插件配置；发现旧配置时立即持久化规范化结果。
@@ -436,6 +480,19 @@ class ImageFileSuggestModal extends FuzzySuggestModal<TFile> {
 function isImageFile(file: TFile): boolean {
 	return ['avif', 'bmp', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']
 		.includes(file.extension.toLowerCase());
+}
+
+/** 计算二级菜单显示位置；键盘触发时使用一级菜单项的位置。 */
+function getSubmenuPosition(event: MouseEvent | KeyboardEvent): { x: number; y: number } {
+	if (event instanceof MouseEvent) {
+		return { x: event.clientX, y: event.clientY };
+	}
+	const target = event.target;
+	if (target instanceof HTMLElement) {
+		const rect = target.getBoundingClientRect();
+		return { x: rect.right, y: rect.top };
+	}
+	return { x: 0, y: 0 };
 }
 
 /** 从粘贴事件中提取第一个图片文件，非图片粘贴返回 null。 */

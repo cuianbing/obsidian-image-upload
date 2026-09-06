@@ -237,10 +237,13 @@ export default class ImageUploadPlugin extends Plugin {
 
 		try {
 			const result = await this.uploadFile(file);
-			replaceImageReference(editor, reference, result.url);
 			const renamedFile = this.settings.renameLocalAfterUpload
 				? await this.uploadService.renameFileToRemoteName(file, result.key)
 				: file;
+			const currentReference = this.settings.renameLocalAfterUpload
+				? findImageReferenceAtCursor(editor) ?? reference
+				: reference;
+			replaceImageReference(editor, currentReference, result.url);
 			if (this.settings.deleteLocalAfterUpload) {
 				await this.app.fileManager.trashFile(renamedFile);
 			}
@@ -260,13 +263,13 @@ export default class ImageUploadPlugin extends Plugin {
 	async uploadSelectedImage(editor: Editor, file: TFile): Promise<void> {
 		try {
 			const result = await this.uploadFile(file);
-			editor.replaceSelection(`![${file.basename}](${result.url})`);
 			const renamedFile = this.settings.renameLocalAfterUpload
 				? await this.uploadService.renameFileToRemoteName(file, result.key)
 				: file;
 			if (this.settings.deleteLocalAfterUpload) {
 				await this.app.fileManager.trashFile(renamedFile);
 			}
+			editor.replaceSelection(`![${file.basename}](${result.url})`);
 			new Notice('图片已上传并插入 S3 链接。');
 		} catch (error) {
 			const normalizedError = this.getNormalizedError(error);
@@ -299,14 +302,13 @@ export default class ImageUploadPlugin extends Plugin {
 		const failureReasons = new Map<string, string>();
 		let completed = 0;
 		let failed = 0;
-		for (const { reference, file } of references) {
+		for (const { file } of references) {
 			try {
 				let result = results.get(file.path);
 				if (!result) {
 					result = await this.uploadFile(file);
 					results.set(file.path, result);
 				}
-				replaceImageReference(editor, reference, result.url);
 				completed += 1;
 				progressNotice.setMessage(`正在上传图片 ${completed + failed}/${references.length}...`);
 			} catch (error) {
@@ -318,14 +320,23 @@ export default class ImageUploadPlugin extends Plugin {
 			}
 		}
 
-		if (this.settings.renameLocalAfterUpload || this.settings.deleteLocalAfterUpload) {
-			for (const [originalPath, result] of results) {
+		const filesByPath = new Map<string, { file: TFile; result: ImageUploadResult }>();
+		for (const [originalPath, result] of results) {
 				const originalFile = this.app.vault.getAbstractFileByPath(originalPath);
 				if (!(originalFile instanceof TFile)) continue;
 				const file = this.settings.renameLocalAfterUpload
 					? await this.uploadService.renameFileToRemoteName(originalFile, result.key)
 					: originalFile;
-				if (this.settings.deleteLocalAfterUpload) await this.app.fileManager.trashFile(file);
+			filesByPath.set(file.path, { file, result });
+		}
+		for (const reference of findImageReferences(editor)) {
+			const file = resolveImageFile(this.app, reference, sourcePath);
+			const uploaded = file ? filesByPath.get(file.path) : undefined;
+			if (uploaded) replaceImageReference(editor, reference, uploaded.result.url);
+		}
+		if (this.settings.deleteLocalAfterUpload) {
+			for (const { file } of filesByPath.values()) {
+				await this.app.fileManager.trashFile(file);
 			}
 		}
 		progressNotice.setMessage(failed === 0
@@ -359,11 +370,11 @@ export default class ImageUploadPlugin extends Plugin {
 		try {
 			new Notice('正在上传粘贴的图片...', 0);
 			const result = await this.uploadFile(localFile);
-			editor.replaceSelection(`![${localFile.basename}](${result.url})`);
 			const renamedFile = this.settings.renameLocalAfterUpload
 				? await this.uploadService.renameFileToRemoteName(localFile, result.key)
 				: localFile;
 			if (this.settings.deleteLocalAfterUpload) await this.app.fileManager.trashFile(renamedFile);
+			editor.replaceSelection(`![${localFile.basename}](${result.url})`);
 			new Notice('粘贴图片已上传并插入 S3 链接。');
 		} catch (error) {
 			const normalizedError = this.getNormalizedError(error);

@@ -1,4 +1,12 @@
-import { Editor, MarkdownView, Notice, Plugin, TFile } from 'obsidian';
+import {
+	App,
+	Editor,
+	FuzzySuggestModal,
+	MarkdownView,
+	Notice,
+	Plugin,
+	TFile,
+} from 'obsidian';
 import {
 	formatErrorForNotice,
 	logS3Diagnostic,
@@ -51,6 +59,13 @@ export default class ImageUploadPlugin extends Plugin {
 			name: 'Upload current image to S3',
 			editorCallback: (editor: Editor) => {
 				void this.uploadCurrentImage(editor);
+			},
+		});
+		this.addCommand({
+			id: 'upload-image-file-to-s3',
+			name: 'Upload image file to S3',
+			editorCallback: (editor: Editor) => {
+				new ImageFileSuggestModal(this.app, this, editor).open();
 			},
 		});
 	}
@@ -177,6 +192,28 @@ export default class ImageUploadPlugin extends Plugin {
 		}
 	}
 
+	/** 上传用户选中的 Vault 图片，并在当前光标位置插入标准 Markdown 图片。
+	 * @param editor 当前 Markdown 编辑器。
+	 * @param file 用户选择的 Vault 图片文件。
+	 * @returns 上传、插入和后续文件处理完成后的 Promise。
+	 */
+	async uploadSelectedImage(editor: Editor, file: TFile): Promise<void> {
+		try {
+			const result = await this.uploadFile(file);
+			editor.replaceSelection(`![${file.basename}](${result.url})`);
+			const renamedFile = this.settings.renameLocalAfterUpload
+				? await this.uploadService.renameFileToRemoteName(file, result.key)
+				: file;
+			if (this.settings.deleteLocalAfterUpload) {
+				await this.app.fileManager.trashFile(renamedFile);
+			}
+			new Notice('图片已上传并插入 S3 链接。');
+		} catch (error) {
+			const normalizedError = this.getNormalizedError(error);
+			logS3Error('upload-selected-image', this.settings, normalizedError);
+			new Notice(formatErrorForNotice(normalizedError));
+		}
+	}
 	/** 更新单项敏感凭证，并立即写入 Obsidian SecretStorage。
 	 * @param key 要更新的凭证字段名。
 	 * @param value 用户输入的新凭证值。
@@ -218,6 +255,44 @@ export default class ImageUploadPlugin extends Plugin {
 		if (isNormalizedErrorWrapper(error)) return error.normalized;
 		return normalizeS3Error(error);
 	}
+}
+
+/** 提供 Vault 图片搜索选择，并在确认后启动上传。 */
+class ImageFileSuggestModal extends FuzzySuggestModal<TFile> {
+	private readonly imageFiles: TFile[];
+
+	constructor(
+		app: App,
+		private readonly plugin: ImageUploadPlugin,
+		private readonly editor: Editor,
+	) {
+		super(app);
+		this.imageFiles = app.vault.getFiles().filter((file) => isImageFile(file));
+		this.setPlaceholder('选择要上传的图片');
+	}
+
+	/** @returns 当前 Vault 中可上传的图片文件。 */
+	getItems(): TFile[] {
+		return this.imageFiles;
+	}
+
+	/** @param file 要显示的 Vault 图片文件。
+	 * @returns 用于搜索和展示的文件路径。
+	 */
+	getItemText(file: TFile): string {
+		return file.path;
+	}
+
+	/** @param file 用户确认选择的图片文件。 */
+	onChooseItem(file: TFile): void {
+		void this.plugin.uploadSelectedImage(this.editor, file);
+	}
+}
+
+/** 判断 Vault 文件是否为插件支持的图片格式。 */
+function isImageFile(file: TFile): boolean {
+	return ['avif', 'bmp', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']
+		.includes(file.extension.toLowerCase());
 }
 
 /** 兼容打包环境中 instanceof 失效的情况，识别带 normalized 字段的异常。

@@ -8,6 +8,7 @@
 
 - **Upload current image to S3**：将光标放在本地图片引用上，上传对应 Vault 图片，并将当前引用替换为公开 Markdown 图片链接。
 - **Upload image file to S3**：打开 Vault 图片搜索，选择图片后上传，并在当前光标位置插入公开 Markdown 图片链接。
+- **Upload all document images to S3**：扫描当前文档中的全部本地图片，逐个上传并替换链接；右上角通知会显示 `已完成/总数` 进度和失败数量。
 
 上传失败时不会修改笔记，也不会删除本地文件；开启删除选项后，上传成功才会将本地文件移入 Obsidian 回收站。
 

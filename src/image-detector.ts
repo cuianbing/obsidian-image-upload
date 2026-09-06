@@ -18,15 +18,28 @@ export function findImageReferenceAtCursor(
 	editor: Editor,
 ): ImageReference | null {
 	const cursor = editor.getCursor();
-	const lineText = editor.getLine(cursor.line);
-	const candidates = [
-		...findWikiImageReferences(lineText),
-		...findMarkdownImageReferences(lineText),
-	];
+	const candidates = findImageReferences(editor).filter((reference) => reference.line === cursor.line);
 	const reference = candidates.find((candidate) =>
 		cursor.ch >= candidate.startCh && cursor.ch < candidate.endCh,
 	);
 	return reference ? { ...reference, line: cursor.line } : null;
+}
+
+/** 扫描当前编辑器中的全部图片引用，并保留每个引用的文档位置。
+ * @param editor 当前 Markdown 编辑器。
+ * @returns 当前文档中的 Wiki-link 和 Markdown 图片引用。
+ */
+export function findImageReferences(editor: Editor): ImageReference[] {
+	const references: ImageReference[] = [];
+	for (const [line, lineText] of editor.getValue().split('\n').entries()) {
+		for (const reference of [
+			...findWikiImageReferences(lineText),
+			...findMarkdownImageReferences(lineText),
+		]) {
+			references.push({ ...reference, line });
+		}
+	}
+	return references;
 }
 
 /** 将图片引用解析为当前 Vault 中的 TFile，远程 URL 不会被解析。

@@ -22,7 +22,7 @@ import {
 import { CredentialStorage } from './storage';
 import { S3ClientService } from './s3-client';
 import { ImageUploadService } from './upload-service';
-import { findImageReferenceAtCursor, resolveImageFile } from './image-detector';
+import { findImageReferenceAtCursor, findImageReferences, resolveImageFile } from './image-detector';
 import { replaceImageReference } from './markdown-replacer';
 import { ImageUploadResult, ImageUploadSettings, NormalizedError, S3Credentials } from './types';
 
@@ -66,6 +66,13 @@ export default class ImageUploadPlugin extends Plugin {
 			name: 'Upload image file to S3',
 			editorCallback: (editor: Editor) => {
 				new ImageFileSuggestModal(this.app, this, editor).open();
+			},
+		});
+		this.addCommand({
+			id: 'upload-document-images-to-s3',
+			name: 'Upload all document images to S3',
+			editorCallback: (editor: Editor) => {
+				void this.uploadDocumentImages(editor);
 			},
 		});
 	}
@@ -213,6 +220,71 @@ export default class ImageUploadPlugin extends Plugin {
 			logS3Error('upload-selected-image', this.settings, normalizedError);
 			new Notice(formatErrorForNotice(normalizedError));
 		}
+	}
+
+	/** 上传当前文档中的全部本地图片，并动态更新上传进度提示。
+	 * @param editor 当前 Markdown 编辑器。
+	 * @returns 批量上传和替换完成后的 Promise。
+	 */
+	private async uploadDocumentImages(editor: Editor): Promise<void> {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const sourcePath = view?.file?.path ?? '';
+		const references = findImageReferences(editor)
+			.map((reference) => ({
+				reference,
+				file: resolveImageFile(this.app, reference, sourcePath),
+			}))
+			.filter((item): item is { reference: typeof item.reference; file: TFile } => item.file !== null)
+			.sort((left, right) => right.reference.line - left.reference.line || right.reference.startCh - left.reference.startCh);
+		if (references.length === 0) {
+			new Notice('当前文档没有可上传的本地图片。');
+			return;
+		}
+
+		const progressNotice = new Notice(`正在准备上传图片 0/${references.length}...`, 0);
+		const results = new Map<string, ImageUploadResult>();
+		const failureReasons = new Map<string, string>();
+		let completed = 0;
+		let failed = 0;
+		for (const { reference, file } of references) {
+			try {
+				let result = results.get(file.path);
+				if (!result) {
+					result = await this.uploadFile(file);
+					results.set(file.path, result);
+				}
+				replaceImageReference(editor, reference, result.url);
+				completed += 1;
+				progressNotice.setMessage(`正在上传图片 ${completed + failed}/${references.length}...`);
+			} catch (error) {
+				failed += 1;
+				const normalizedError = this.getNormalizedError(error);
+				logS3Error('upload-document-images', this.settings, normalizedError);
+				failureReasons.set(file.path, formatErrorForNotice(normalizedError));
+				progressNotice.setMessage(`上传图片 ${completed + failed}/${references.length}，失败 ${failed} 张...`);
+			}
+		}
+
+		if (this.settings.renameLocalAfterUpload || this.settings.deleteLocalAfterUpload) {
+			for (const [originalPath, result] of results) {
+				const originalFile = this.app.vault.getAbstractFileByPath(originalPath);
+				if (!(originalFile instanceof TFile)) continue;
+				const file = this.settings.renameLocalAfterUpload
+					? await this.uploadService.renameFileToRemoteName(originalFile, result.key)
+					: originalFile;
+				if (this.settings.deleteLocalAfterUpload) await this.app.fileManager.trashFile(file);
+			}
+		}
+		progressNotice.setMessage(failed === 0
+			? `图片上传完成：${completed} 张。`
+			: `图片上传完成：成功 ${completed} 张，失败 ${failed} 张。`);
+		if (failureReasons.size > 0) {
+			const details = [...failureReasons.entries()]
+				.map(([path, reason]) => `${path}: ${reason}`)
+				.join('\n');
+			new Notice(`失败图片及原因：\n${details}`, 10000);
+		}
+		window.setTimeout(() => progressNotice.hide(), 4000);
 	}
 	/** 更新单项敏感凭证，并立即写入 Obsidian SecretStorage。
 	 * @param key 要更新的凭证字段名。

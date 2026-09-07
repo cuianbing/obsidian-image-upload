@@ -24,7 +24,7 @@ import {
 import { CredentialStorage } from './storage';
 import { S3ClientService } from './s3-client';
 import { ImageUploadService } from './upload-service';
-import { findImageReferenceAtCursor, findImageReferences, resolveImageFile } from './image-detector';
+import { findImageReferenceAtCursor, findImageReferenceForFile, findImageReferences, resolveImageFile } from './image-detector';
 import { replaceImageReference } from './markdown-replacer';
 import { ImageUploadResult, ImageUploadSettings, NormalizedError, S3Credentials } from './types';
 
@@ -241,7 +241,7 @@ export default class ImageUploadPlugin extends Plugin {
 				? await this.uploadService.renameFileToRemoteName(file, result.key)
 				: file;
 			const currentReference = this.settings.renameLocalAfterUpload
-				? findImageReferenceAtCursor(editor) ?? reference
+				? findImageReferenceForFile(this.app, editor, sourcePath, renamedFile, reference.line, reference.target) ?? reference
 				: reference;
 			replaceImageReference(editor, currentReference, result.url);
 			if (this.settings.deleteLocalAfterUpload) {

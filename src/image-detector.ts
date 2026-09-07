@@ -25,6 +25,30 @@ export function findImageReferenceAtCursor(
 	return reference ? { ...reference, line: cursor.line } : null;
 }
 
+/** 在文件重命名后，根据原行号和 Vault 文件重新定位图片引用。 */
+export function findImageReferenceForFile(
+	app: App,
+	editor: Editor,
+	sourcePath: string,
+	file: TFile,
+	line: number,
+	referenceTarget?: string,
+): ImageReference | null {
+	const references = findImageReferences(editor).filter((reference) => reference.line === line);
+	const resolved = references.find((reference) =>
+		resolveImageFile(app, reference, sourcePath)?.path === file.path,
+	);
+	if (resolved) return resolved;
+	const targetName = file.name.toLowerCase();
+	return references.find((reference) => {
+		const target = decodeImagePath(reference.target).split('/').pop() ?? '';
+		const originalName = referenceTarget
+			? decodeImagePath(referenceTarget).split('/').pop() ?? ''
+			: '';
+		return target.toLowerCase() === targetName || originalName.toLowerCase() === target.toLowerCase();
+	}) ?? null;
+}
+
 /** 扫描当前编辑器中的全部图片引用，并保留每个引用的文档位置。
  * @param editor 当前 Markdown 编辑器。
  * @returns 当前文档中的 Wiki-link 和 Markdown 图片引用。

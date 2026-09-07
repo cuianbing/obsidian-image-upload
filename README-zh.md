@@ -1,8 +1,10 @@
 # anbing-image-upload
 
-将 Obsidian 中的图片上传到 AWS S3 或其他兼容 S3 API 的对象存储，并把笔记中的图片链接替换为公开访问 URL。
+将 Obsidian 中的图片上传到 S3-compatible 对象存储、GitHub 或 GitLab，并把笔记中的图片链接替换为公开访问 URL。
 
-当前支持 AWS S3、Cloudflare R2、七牛云 S3、MinIO 以及其他提供 S3-compatible API 的存储服务。
+当前支持 AWS S3、Cloudflare R2、七牛云 S3、MinIO、GitHub 和 GitLab。
+
+GitHub/GitLab 存储目前要求目标仓库或项目为公开状态，并通过官方 API 将每张图片作为一次提交写入。Git 仓库不适合作为无限容量的对象存储，请注意仓库体积、提交历史和 API 限流。
 
 ## 功能
 
@@ -79,6 +81,16 @@ npm run dev
 | 重试次数 | 网络失败时的重试次数，范围为 0 到 5 |
 | Path-style Endpoint | 某些 S3-compatible 服务需要开启 |
 
+### GitHub
+
+选择 GitHub 后填写 Owner、Repository、Branch 和 Path Prefix，并配置一个具有仓库内容写入权限的 Token。仓库需要公开，图片链接使用 `raw.githubusercontent.com` 地址。
+
+### GitLab
+
+选择 GitLab 后填写 Host、Project、Branch 和 Path Prefix，并配置一个具有项目写入权限的 Token。Project 支持项目 ID 或 `namespace/project`，项目需要公开，图片链接使用 GitLab Raw 地址。
+
+GitHub 和 GitLab Token 只保存在 Obsidian SecretStorage，不会写入 `data.json` 或图片 URL。连接测试只验证项目访问和分支，不会创建测试提交。
+
 ### 默认策略
 
 - 粘贴自动上传：关闭。
@@ -139,7 +151,7 @@ Path-style Endpoint: 根据 MinIO 部署配置决定
 
 打开命令面板，执行以下命令：
 
-#### Upload current image to S3
+#### Upload current image
 
 将光标放在本地图片引用上，上传当前图片并替换链接。
 
@@ -161,11 +173,11 @@ Path-style Endpoint: 根据 MinIO 部署配置决定
 ![image.png](https://img.example.com/obsidian/images/2026/09/UUID.png)
 ```
 
-#### Upload image file to S3
+#### Upload image file
 
 打开 Vault 图片搜索窗口，选择图片后上传，并在当前光标位置插入远程 Markdown 图片。
 
-#### Upload all document images to S3
+#### Upload all document images
 
 扫描当前文档中的全部本地图片，逐个上传并替换链接。右上角通知会显示上传进度，例如：
 

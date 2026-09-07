@@ -3,7 +3,7 @@
 	"name": "anbing-image-upload",
 	"version": "1.0.4",
 	"minAppVersion": "1.11.4",
-	"description": "Upload images to S3-compatible storage.",
+	"description": "Upload images to S3-compatible storage, GitHub, or GitLab.",
 	"author": "cuianbing",
 	"authorUrl": "https://blog.cuianbing.cn",
 	"fundingUrl": "https://blog.cuianbing.cn",

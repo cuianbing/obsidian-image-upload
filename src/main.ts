@@ -22,43 +22,47 @@ import {
 	validateSettings,
 } from './settings';
 import { CredentialStorage } from './storage';
-import { S3ClientService } from './s3-client';
+import { createStorageBackend } from './storage-backend-factory';
+import { StorageBackend } from './storage-backend';
 import { ImageUploadService } from './upload-service';
 import { findImageReferenceAtCursor, findImageReferenceForFile, findImageReferences, resolveImageFile } from './image-detector';
 import { replaceImageReference } from './markdown-replacer';
-import { ImageUploadResult, ImageUploadSettings, NormalizedError, S3Credentials } from './types';
+import { ImageUploadResult, ImageUploadSettings, NormalizedError, S3Credentials, StorageCredentials } from './types';
 
 export default class ImageUploadPlugin extends Plugin {
 	settings!: ImageUploadSettings;
 	credentials!: S3Credentials;
 	private credentialStorage!: CredentialStorage;
-	private s3Client!: S3ClientService;
+	private storageBackend!: StorageBackend;
 	uploadService!: ImageUploadService;
 
-	/** 加载配置、初始化凭证和 S3 服务，并注册设置页与测试命令。
+	/** 加载配置、初始化存储服务，并注册设置页与测试命令。
 	 * @returns 插件初始化完成后的 Promise。
 	 */
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		this.credentialStorage = new CredentialStorage(this.app);
 		this.credentials = this.credentialStorage.getCredentials();
-		this.s3Client = new S3ClientService(() => this.credentials);
-		this.uploadService = new ImageUploadService(this.app, this.s3Client, () => this.settings);
+		this.storageBackend = createStorageBackend(this.settings.provider);
+		this.uploadService = new ImageUploadService(this.app, () => {
+			this.storageBackend = createStorageBackend(this.settings.provider);
+			return this.storageBackend;
+		}, () => this.getStorageCredentials(), () => this.settings);
 
 		this.addSettingTab(new ImageUploadSettingTab(this.app, this));
 		this.addCommand({
 			id: 'test-s3-connection',
-			name: 'Test S3 connection',
+			name: 'Test storage connection',
 			callback: () => this.testConnection(),
 		});
 		this.addCommand({
 			id: 'test-s3-upload',
-			name: 'Test S3 upload',
+			name: 'Test storage upload',
 			callback: () => this.testUpload(),
 		});
 		this.addCommand({
 			id: 'upload-current-image-to-s3',
-			name: 'Upload current image to S3',
+			name: 'Upload current image',
 			editorCallback: (editor: Editor) => {
 				void this.uploadCurrentImage(editor);
 			},
@@ -73,14 +77,14 @@ export default class ImageUploadPlugin extends Plugin {
 		);
 		this.addCommand({
 			id: 'upload-image-file-to-s3',
-			name: 'Upload image file to S3',
+			name: 'Upload image file',
 			editorCallback: (editor: Editor) => {
 				new ImageFileSuggestModal(this.app, this, editor).open();
 			},
 		});
 		this.addCommand({
 			id: 'upload-document-images-to-s3',
-			name: 'Upload all document images to S3',
+			name: 'Upload all document images',
 			editorCallback: (editor: Editor) => {
 				void this.uploadDocumentImages(editor);
 			},
@@ -111,12 +115,12 @@ export default class ImageUploadPlugin extends Plugin {
 	): void {
 		const submenu = new Menu();
 		submenu.addItem((item) => {
-			item.setTitle('上传当前图片到 S3').setIcon('upload').onClick(() => {
+			item.setTitle('上传当前图片').setIcon('upload').onClick(() => {
 				void this.uploadCurrentImage(editor);
 			});
 		});
 		submenu.addItem((item) => {
-			item.setTitle('选择图片上传到 S3').setIcon('file-image').onClick(() => {
+			item.setTitle('选择图片上传').setIcon('file-image').onClick(() => {
 				new ImageFileSuggestModal(this.app, this, editor).open();
 			});
 		});
@@ -163,17 +167,17 @@ export default class ImageUploadPlugin extends Plugin {
 			new Notice(validationErrors[0] ?? 'S3 配置无效。');
 			return;
 		}
-		if (!this.credentialStorage.hasCredentials()) {
+		if (!this.hasStorageCredentials()) {
 			logS3Diagnostic('test-connection-credentials-missing', {});
-			new Notice('请先配置 access key ID 和 secret access key。');
+			new Notice(this.settings.provider === 's3' ? '请先配置 access key ID 和 secret access key。' : '请先配置 Git provider token。');
 			return;
 		}
 
 		try {
 			logS3Diagnostic('test-connection-request-start', {});
-			await this.s3Client.testConnection(this.settings);
+			await this.getStorageBackend().testConnection(this.settings, this.getStorageCredentials());
 			logS3Diagnostic('test-connection-success', {});
-			new Notice('S3 连接测试成功。');
+			new Notice(`${this.getProviderName()} 连接测试成功。`);
 		} catch (error) {
 			const normalizedError = this.getNormalizedError(error);
 			logS3Diagnostic('test-connection-caught', {
@@ -194,14 +198,14 @@ export default class ImageUploadPlugin extends Plugin {
 			new Notice(validationErrors[0] ?? 'S3 配置无效。');
 			return;
 		}
-		if (!this.credentialStorage.hasCredentials()) {
-			new Notice('请先配置 access key ID 和 secret access key。');
+		if (!this.hasStorageCredentials()) {
+			new Notice(this.settings.provider === 's3' ? '请先配置 access key ID 和 secret access key。' : '请先配置 Git provider token。');
 			return;
 		}
 
 		try {
-			await this.s3Client.testUpload(this.settings);
-			new Notice('S3 测试上传成功，临时对象已清理。');
+			await this.getStorageBackend().testUpload(this.settings, this.getStorageCredentials());
+			new Notice(`${this.getProviderName()} 测试成功。`);
 		} catch (error) {
 			const normalizedError = this.getNormalizedError(error);
 			logS3Error('test-upload', this.settings, normalizedError);
@@ -215,6 +219,34 @@ export default class ImageUploadPlugin extends Plugin {
 	 */
 	async uploadFile(file: TFile): Promise<ImageUploadResult> {
 		return this.uploadService.uploadFile(file);
+	}
+
+	private getStorageBackend(): StorageBackend {
+		if (this.storageBackend.provider !== this.settings.provider) {
+			this.storageBackend = createStorageBackend(this.settings.provider);
+		}
+		return this.storageBackend;
+	}
+
+	private getProviderName(): string {
+		if (this.settings.provider === 'github') return 'GitHub';
+		if (this.settings.provider === 'gitlab') return 'GitLab';
+		return 'S3';
+	}
+
+	private getStorageCredentials(): StorageCredentials {
+		return {
+			...this.credentials,
+			token: this.settings.provider === 's3'
+				? ''
+				: this.credentialStorage.getToken(this.settings.provider),
+		};
+	}
+
+	private hasStorageCredentials(): boolean {
+		return this.settings.provider === 's3'
+			? this.credentialStorage.hasCredentials()
+			: this.credentialStorage.getToken(this.settings.provider).length > 0;
 	}
 
 	/** 上传光标所在的本地图片，并只替换当前 Markdown 图片引用。
@@ -247,7 +279,7 @@ export default class ImageUploadPlugin extends Plugin {
 			if (this.settings.deleteLocalAfterUpload) {
 				await this.app.fileManager.trashFile(renamedFile);
 			}
-			new Notice('图片已上传并替换为 S3 链接。');
+			new Notice(`图片已上传并替换为 ${this.getProviderName()} 链接。`);
 		} catch (error) {
 			const normalizedError = this.getNormalizedError(error);
 			logS3Error('upload-current-image', this.settings, normalizedError);
@@ -270,7 +302,7 @@ export default class ImageUploadPlugin extends Plugin {
 				await this.app.fileManager.trashFile(renamedFile);
 			}
 			editor.replaceSelection(`![${file.basename}](${result.url})`);
-			new Notice('图片已上传并插入 S3 链接。');
+			new Notice('图片已上传并插入Markdown链接。');
 		} catch (error) {
 			const normalizedError = this.getNormalizedError(error);
 			logS3Error('upload-selected-image', this.settings, normalizedError);
@@ -329,10 +361,19 @@ export default class ImageUploadPlugin extends Plugin {
 					: originalFile;
 			filesByPath.set(file.path, { file, result });
 		}
-		for (const reference of findImageReferences(editor)) {
-			const file = resolveImageFile(this.app, reference, sourcePath);
-			const uploaded = file ? filesByPath.get(file.path) : undefined;
-			if (uploaded) replaceImageReference(editor, reference, uploaded.result.url);
+		const referencesToReplace = findImageReferences(editor)
+			.map((reference) => ({
+				reference,
+				file: resolveImageFile(this.app, reference, sourcePath),
+			}))
+			.map((item) => ({
+				...item,
+				uploaded: item.file ? filesByPath.get(item.file.path) : undefined,
+			}))
+			.filter((item): item is typeof item & { uploaded: { file: TFile; result: ImageUploadResult } } => item.uploaded !== undefined)
+			.sort((left, right) => right.reference.line - left.reference.line || right.reference.startCh - left.reference.startCh);
+		for (const { reference, uploaded } of referencesToReplace) {
+			replaceImageReference(editor, reference, uploaded.result.url);
 		}
 		if (this.settings.deleteLocalAfterUpload) {
 			for (const { file } of filesByPath.values()) {
@@ -367,25 +408,27 @@ export default class ImageUploadPlugin extends Plugin {
 
 		const localFile = await this.savePastedImage(imageFile, info);
 		if (!localFile) return;
+		const uploadNotice = new Notice('正在上传粘贴的图片...', 0);
 		try {
-			new Notice('正在上传粘贴的图片...', 0);
 			const result = await this.uploadFile(localFile);
 			const renamedFile = this.settings.renameLocalAfterUpload
 				? await this.uploadService.renameFileToRemoteName(localFile, result.key)
 				: localFile;
 			if (this.settings.deleteLocalAfterUpload) await this.app.fileManager.trashFile(renamedFile);
 			editor.replaceSelection(`![${localFile.basename}](${result.url})`);
-			new Notice('粘贴图片已上传并插入 S3 链接。');
+			uploadNotice.setMessage('粘贴图片已上传并插入Markdown链接。');
+			window.setTimeout(() => uploadNotice.hide(), 2000);
 		} catch (error) {
 			const normalizedError = this.getNormalizedError(error);
 			logS3Error('upload-pasted-image', this.settings, normalizedError);
 			if (this.settings.fallbackToLocalOnFailure) {
 				editor.replaceSelection(`![${localFile.basename}](${localFile.path})`);
-				new Notice(`上传失败，已保留本地图片：${formatErrorForNotice(normalizedError)}`);
+				uploadNotice.setMessage(`上传失败，已保留本地图片：${formatErrorForNotice(normalizedError)}`);
 			} else {
 				await this.app.fileManager.trashFile(localFile);
-				new Notice(formatErrorForNotice(normalizedError));
+				uploadNotice.setMessage(formatErrorForNotice(normalizedError));
 			}
+			window.setTimeout(() => uploadNotice.hide(), 2000);
 		}
 	}
 
@@ -418,23 +461,37 @@ export default class ImageUploadPlugin extends Plugin {
 	 * @returns 无返回值；凭证写入由 SecretStorage 同步完成。
 	 */
 	updateCredential(key: keyof S3Credentials, value: string): void {
+		if (key === 'token') return;
 		this.credentials[key] = value;
 		this.credentialStorage.saveCredentials(this.credentials);
+	}
+
+	updateToken(value: string): void {
+		if (this.settings.provider === 's3') return;
+		this.credentialStorage.saveToken(this.settings.provider, value);
+	}
+
+	getToken(): string {
+		return this.settings.provider === 's3' ? '' : this.credentialStorage.getToken(this.settings.provider);
 	}
 
 	/** 判断 Access Key ID 和 Secret Access Key 是否都已配置。
 	 * @returns 必需凭证是否都非空。
 	 */
 	hasCredentials(): boolean {
-		return this.credentialStorage.hasCredentials();
+		return this.hasStorageCredentials();
 	}
 
 	/** 清空 SecretStorage 中保存的所有 S3 凭证并刷新内存副本。
 	 * @returns 无返回值。
 	 */
 	clearCredentials(): void {
-		this.credentialStorage.clearCredentials();
-		this.credentials = this.credentialStorage.getCredentials();
+		if (this.settings.provider === 's3') {
+			this.credentialStorage.clearCredentials();
+			this.credentials = this.credentialStorage.getCredentials();
+		} else {
+			this.credentialStorage.clearToken(this.settings.provider);
+		}
 	}
 
 	/** 返回当前配置的字段校验错误；空数组表示配置格式有效。

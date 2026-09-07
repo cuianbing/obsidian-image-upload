@@ -1,6 +1,6 @@
 import { NormalizedError } from './types';
 
-export class S3OperationError extends Error {
+export class StorageOperationError extends Error {
 	/** 创建携带归一化错误信息的 S3 操作异常。
 	 * @param normalized 已归一化的错误信息。
 	 */
@@ -9,6 +9,8 @@ export class S3OperationError extends Error {
 		this.name = 'S3OperationError';
 	}
 }
+
+export class S3OperationError extends StorageOperationError {}
 
 /** 将 AWS SDK、Node 和 S3-compatible 服务错误统一归类并脱敏。
  * @param error AWS SDK、网络层或服务商返回的原始异常。

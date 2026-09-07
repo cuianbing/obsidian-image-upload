@@ -4,6 +4,8 @@ import { S3Credentials } from './types';
 const ACCESS_KEY_ID = 's3-access-key-id';
 const SECRET_ACCESS_KEY = 's3-secret-access-key';
 const SESSION_TOKEN = 's3-session-token';
+const GITHUB_TOKEN = 'github-token';
+const GITLAB_TOKEN = 'gitlab-token';
 
 export class CredentialStorage {
 	/** 保存当前 Obsidian App，用于访问 SecretStorage。
@@ -19,7 +21,20 @@ export class CredentialStorage {
 			accessKeyId: this.app.secretStorage.getSecret(ACCESS_KEY_ID) ?? '',
 			secretAccessKey: this.app.secretStorage.getSecret(SECRET_ACCESS_KEY) ?? '',
 			sessionToken: this.app.secretStorage.getSecret(SESSION_TOKEN) ?? '',
+			token: '',
 		};
+	}
+
+	getToken(provider: 'github' | 'gitlab'): string {
+		return this.app.secretStorage.getSecret(provider === 'github' ? GITHUB_TOKEN : GITLAB_TOKEN) ?? '';
+	}
+
+	saveToken(provider: 'github' | 'gitlab', token: string): void {
+		this.app.secretStorage.setSecret(provider === 'github' ? GITHUB_TOKEN : GITLAB_TOKEN, token.trim());
+	}
+
+	clearToken(provider: 'github' | 'gitlab'): void {
+		this.saveToken(provider, '');
 	}
 
 	/** 写入或覆盖 S3 凭证，写入前去除首尾空白。

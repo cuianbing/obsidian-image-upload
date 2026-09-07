@@ -1,7 +1,9 @@
 # anbing‑image‑upload
-Upload images in Obsidian to AWS S3 or other S3‑API‑compatible object‑storage services, and replace image links in notes with public‑access URLs.
+Upload images in Obsidian to S3-compatible storage, GitHub, or GitLab, and replace image links in notes with public-access URLs.
 
-Currently supports AWS S3, Cloudflare R2, Qiniu S3‑compatible API, MinIO and other storage services offering S3‑compatible APIs.
+Currently supports AWS S3, Cloudflare R2, Qiniu S3-compatible API, MinIO, GitHub, and GitLab.
+
+GitHub/GitLab storage currently requires a public repository or project. Each image is written through the provider API as a separate commit. Git repositories are not unlimited object storage; consider repository size, history growth, and API rate limits.
 
 ## Features
 ‑ Upload the local image under the current cursor position.
@@ -67,6 +69,16 @@ Open plugin settings and fill in the options below.
 | Retry Count | Retry attempts for network failures, range: 0‑5 |
 | Path‑style Endpoint | Enable for certain S3‑compatible storage providers |
 
+### GitHub
+
+Select GitHub and configure the owner, repository, branch, path prefix, and a token with repository content write permission. The repository must be public; uploaded links use `raw.githubusercontent.com`.
+
+### GitLab
+
+Select GitLab and configure the host, project, branch, path prefix, and a token with project write permission. The project accepts a numeric ID or `namespace/project` and must be public; uploaded links use the GitLab Raw URL.
+
+GitHub and GitLab tokens are stored only in Obsidian SecretStorage. They are not written to `data.json` or image URLs. Connection tests validate project and branch access without creating a test commit.
+
 ### Default Policies
 ‑ Auto‑upload on paste: **Disabled**
 ‑ Rename local files after successful upload: **Enabled**
@@ -117,7 +129,7 @@ Path‑style Endpoint: Determined by your MinIO deployment settings
 ### Editor Commands
 Open Command Palette and run the commands below.
 
-#### Upload current image to S3
+#### Upload current image
 Place your cursor on a local‑image reference, then upload and replace its link.
 Supports Wiki‑link syntax:
 ```markdown
@@ -133,10 +145,10 @@ After upload it will be converted into:
 ![image.png](https://img.example.com/obsidian/images/2026/09/UUID.png)
 ```
 
-#### Upload image file to S3
+#### Upload image file
 Open Vault image selector window, pick an image to upload. The remote Markdown‑image markup will be inserted at your cursor position.
 
-#### Upload all document images to S3
+#### Upload all document images
 Scan all local images within current document, upload each one and replace links. Progress will show in the top‑right notification, example:
 ```text
 Uploading image 3/8...

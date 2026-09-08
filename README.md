@@ -71,7 +71,7 @@ Open plugin settings and fill in the options below.
 
 ### GitHub
 
-Select GitHub and configure the owner, repository, branch, path prefix, and a token with repository content write permission. The repository must be public; uploaded links use `raw.githubusercontent.com`.
+Select GitHub and configure the owner, repository, branch, path prefix, and a token with repository content write permission. The repository must be public; uploaded links use `raw.githubusercontent.com` by default. You can optionally set a CDN domain such as `https://cdn.jsdelivr.net` or `https://testingcf.jsdelivr.net` to use jsDelivr's GitHub CDN URL format. Leave the CDN domain empty to use `raw.githubusercontent.com`.
 
 ### GitLab
 

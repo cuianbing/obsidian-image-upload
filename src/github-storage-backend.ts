@@ -42,9 +42,10 @@ export class GitHubStorageBackend implements StorageBackend {
 			}),
 		);
 		const requestId = response.headers['x-github-request-id'];
+		const url = createGithubImageUrl(settings, owner, repository, branch, filePath);
 		return {
 			remotePath: filePath,
-			url: `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/${encodePath(branch)}/${encodePath(filePath)}`,
+			url,
 			requestId,
 		};
 	}
@@ -95,6 +96,31 @@ function required(value: string, name: string): string {
 
 function encodePath(path: string): string {
 	return path.split('/').map((part) => encodeURIComponent(part)).join('/');
+}
+
+function createGithubImageUrl(
+	settings: ImageUploadSettings,
+	owner: string,
+	repository: string,
+	branch: string,
+	filePath: string,
+): string {
+	const cdnDomain = settings.githubCdnDomain.trim().replace(/\/+$/, '');
+	if (!cdnDomain) {
+		return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/${encodePath(branch)}/${encodePath(filePath)}`;
+	}
+	if (isJsDelivrDomain(cdnDomain)) {
+		return `${cdnDomain}/gh/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}@${encodeURIComponent(branch)}/${encodePath(filePath)}`;
+	}
+	return `${cdnDomain}/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/${encodePath(branch)}/${encodePath(filePath)}`;
+}
+
+function isJsDelivrDomain(domain: string): boolean {
+	try {
+		return /(?:^|\.)jsdelivr\.net$/i.test(new URL(domain).hostname);
+	} catch {
+		return false;
+	}
 }
 
 function toBase64(bytes: Uint8Array): string {

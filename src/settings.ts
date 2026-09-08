@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: ImageUploadSettings = {
 	githubBranch: 'main',
 	githubPathPrefix: 'obsidian/images',
 	githubCommitMessage: 'Upload image from Obsidian',
+	githubCdnDomain: '',
 	gitlabHost: 'https://gitlab.com',
 	gitlabProject: '',
 	gitlabBranch: 'main',
@@ -75,6 +76,13 @@ export function validateSettings(settings: ImageUploadSettings): string[] {
 		if (!settings.githubOwner.trim()) errors.push('请填写 GitHub Owner。');
 		if (!settings.githubRepository.trim()) errors.push('请填写 GitHub Repository。');
 		if (!settings.githubBranch.trim()) errors.push('请填写 GitHub 分支。');
+		if (settings.githubCdnDomain.trim()) {
+			try {
+				if (new URL(settings.githubCdnDomain).protocol !== 'https:') errors.push('GitHub CDN 域名必须使用 HTTPS。');
+			} catch {
+				errors.push('GitHub CDN 域名不是有效的 URL。');
+			}
+		}
 	} else if (settings.provider === 'gitlab') {
 		if (!settings.gitlabHost.trim()) errors.push('请填写 GitLab Host。');
 		if (!settings.gitlabProject.trim()) errors.push('请填写 GitLab Project。');
@@ -174,6 +182,7 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 			{ name: 'GitHub Repository', desc: '公开 GitHub 仓库名', visible: () => this.plugin.settings.provider === 'github', control: { type: 'text', key: 'githubRepository' } },
 			{ name: 'GitHub Branch', desc: '上传目标分支', visible: () => this.plugin.settings.provider === 'github', control: { type: 'text', key: 'githubBranch' } },
 			{ name: 'GitHub Path Prefix', desc: '仓库内的图片目录', visible: () => this.plugin.settings.provider === 'github', control: { type: 'text', key: 'githubPathPrefix' } },
+			{ name: 'GitHub CDN Domain', desc: '可选，例如 https://cdn.jsdelivr.net；留空使用 GitHub Raw 地址', visible: () => this.plugin.settings.provider === 'github', control: { type: 'text', key: 'githubCdnDomain' } },
 			{ name: 'GitLab Host', desc: '默认 https://gitlab.com', visible: () => this.plugin.settings.provider === 'gitlab', control: { type: 'text', key: 'gitlabHost' } },
 			{ name: 'GitLab Project', desc: 'Project ID 或 namespace/project', visible: () => this.plugin.settings.provider === 'gitlab', control: { type: 'text', key: 'gitlabProject' } },
 			{ name: 'GitLab Branch', desc: '上传目标分支', visible: () => this.plugin.settings.provider === 'gitlab', control: { type: 'text', key: 'gitlabBranch' } },
@@ -256,6 +265,7 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 			this.addTextSetting(containerEl, 'GitHub Repository', '公开 GitHub 仓库名', 'githubRepository');
 			this.addTextSetting(containerEl, 'GitHub Branch', '上传目标分支', 'githubBranch');
 			this.addTextSetting(containerEl, 'GitHub Path Prefix', '仓库内的图片目录', 'githubPathPrefix');
+			this.addTextSetting(containerEl, 'GitHub CDN Domain', '可选，例如 https://cdn.jsdelivr.net；留空使用 GitHub Raw 地址', 'githubCdnDomain');
 		} else {
 			this.addTextSetting(containerEl, 'GitLab Host', '默认 https://gitlab.com', 'gitlabHost');
 			this.addTextSetting(containerEl, 'GitLab Project', 'Project ID 或 namespace/project', 'gitlabProject');
@@ -353,7 +363,7 @@ export class ImageUploadSettingTab extends PluginSettingTab {
 		containerEl: HTMLElement,
 		name: string,
 		desc: string,
-		key: 'endpoint' | 'region' | 'bucket' | 'publicUrlPrefix' | 'objectKeyPrefix' | 'githubOwner' | 'githubRepository' | 'githubBranch' | 'githubPathPrefix' | 'gitlabHost' | 'gitlabProject' | 'gitlabBranch' | 'gitlabPathPrefix',
+		key: 'endpoint' | 'region' | 'bucket' | 'publicUrlPrefix' | 'objectKeyPrefix' | 'githubOwner' | 'githubRepository' | 'githubBranch' | 'githubPathPrefix' | 'githubCdnDomain' | 'gitlabHost' | 'gitlabProject' | 'gitlabBranch' | 'gitlabPathPrefix',
 	): void {
 		new Setting(containerEl).setName(name).setDesc(desc).addText((text) =>
 			text.setValue(this.plugin.settings[key]).onChange(async (value) => {

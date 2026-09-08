@@ -83,7 +83,7 @@ npm run dev
 
 ### GitHub
 
-选择 GitHub 后填写 Owner、Repository、Branch 和 Path Prefix，并配置一个具有仓库内容写入权限的 Token。仓库需要公开，图片链接使用 `raw.githubusercontent.com` 地址。
+选择 GitHub 后填写 Owner、Repository、Branch 和 Path Prefix，并配置一个具有仓库内容写入权限的 Token。仓库需要公开，默认使用 `raw.githubusercontent.com` 地址。也可以填写可选的 CDN 域名，例如 `https://cdn.jsdelivr.net` 或 `https://testingcf.jsdelivr.net`，此时图片地址会使用 jsDelivr 的 GitHub 加速格式。若希望使用 `raw.githubusercontent.com`，请将 CDN 域名留空。
 
 ### GitLab
 

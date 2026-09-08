@@ -20,6 +20,7 @@ export interface ImageUploadSettings {
 	githubBranch: string;
 	githubPathPrefix: string;
 	githubCommitMessage: string;
+	githubCdnDomain: string;
 	gitlabHost: string;
 	gitlabProject: string;
 	gitlabBranch: string;
